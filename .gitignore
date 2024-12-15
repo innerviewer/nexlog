@@ -1,3 +1,4 @@
 # Ignore Zig build artifacts
 .zig-cache/
 zig-out/
+*.log
