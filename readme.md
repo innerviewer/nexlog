@@ -146,22 +146,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Contact
 
-Your Name - [@yourusername](https://twitter.com/yourusername)
+Your Name - [@chrischtel](https://twitter.com/chrischtel)
 
-Project Link: [https://github.com/yourusername/nexlog](https://github.com/yourusername/nexlog)
+Project Link: [https://github.com/yourusername/nexlog](https://github.com/chrischtel/nexlog)
 
 ---
 
 <p align="center">Made with ❤️ in Zig</p>
-
-This provides:
-- Clear feature overview
-- Quick start guide
-- Installation instructions
-- Advanced usage examples
-- Contributing guidelines
-- Build instructions
-- Professional badges
-- Clean formatting and emoji usage
-- Contact information
-- Acknowledgments section
