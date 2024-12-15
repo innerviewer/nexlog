@@ -46,27 +46,3 @@ jobs:
         key: ${{ runner.os }}-zig-${{ matrix.zig-version }}-${{ hashFiles('**/build.zig.zon') }}
         restore-keys: |
           ${{ runner.os }}-zig-${{ matrix.zig-version }}-
-
-  coverage:
-    needs: test
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v2
-      with:
-        version: '0.11.0'
-
-    - name: Generate coverage
-      run: |
-        zig build test -Dcover
-        # Add your actual coverage tool here
-        echo "Coverage generation placeholder"
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.lcov
-        fail_ci_if_error: true
