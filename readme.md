@@ -72,6 +72,10 @@ pub fn main() !void {
     .version = "0.1.0",
     .dependencies = .{
         .nexlog = .{
+            // 🚧 Nexlog: Actively Developing
+            // Expect rapid feature growth and frequent changes
+            // Recommended: Use develop branch for latest improvements
+            // "git+https://github.com/chrischtel/nexlog#develop"
             .url = "git+https://github.com/chrischtel/nexlog/",
             .hash = "...",
         },
