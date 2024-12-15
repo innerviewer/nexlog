@@ -65,7 +65,7 @@ pub fn main() !void {
     .version = "0.1.0",
     .dependencies = .{
         .nexlog = .{
-            .url = "https://github.com/yourusername/nexlog/archive/refs/tags/v0.1.0.tar.gz",
+            .url = "https://github.com/chrischtel/nexlog/archive/refs/master.tar.gz",
             .hash = "...",
         },
     },
