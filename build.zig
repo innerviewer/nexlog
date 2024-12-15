@@ -33,8 +33,10 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lib_unit_tests.step);
 
     // Add tests from tests directory
-    var tests_dir = std.fs.cwd().openDir("tests", .{ .iterate = true }) catch unreachable;
-    defer tests_dir.close();
+    var tests_dir = std.fs.cwd().openDir("tests", .{ .iterate = true }) catch |err| {
+        if (err == error.FileNotFound) return;
+        unreachable;
+    };
 
     var it = tests_dir.iterate();
     while (it.next() catch unreachable) |entry| {
@@ -61,8 +63,10 @@ pub fn build(b: *std.Build) void {
     const run_examples = b.step("examples", "Run all examples");
 
     // Add examples from examples directory
-    var examples_dir = std.fs.cwd().openDir("examples", .{ .iterate = true }) catch unreachable;
-    defer examples_dir.close();
+    var examples_dir = std.fs.cwd().openDir("examples", .{ .iterate = true }) catch |err| {
+        if (err == error.FileNotFound) return;
+        unreachable;
+    };
 
     var examples_it = examples_dir.iterate();
     while (examples_it.next() catch unreachable) |entry| {

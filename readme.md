@@ -78,12 +78,12 @@ pub fn main() !void {
 
 2. Add to your `build.zig`:
 ```zig
-const nexlog = b.dependency("nexlog", .{
-    .target = target,
-    .optimize = optimize,
-});
+    const nexlog = b.dependency("nexlog", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
-exe.addModule("nexlog", nexlog.module("nexlog"));
+    exe.root_module.addImport("nexlog", nexlog.module("nexlog"));
 ```
 
 ## Advanced Usage
