@@ -59,13 +59,17 @@ pub fn main() !void {
 ## Installation
 
 1. Add Nexlog as a dependency in your `build.zig.zon`:
+
+`zig fetch --save git+https://github.com/chrischtel/nexlog/`
+
 ```zig
+
 .{
     .name = "my-project",
     .version = "0.1.0",
     .dependencies = .{
         .nexlog = .{
-            .url = "https://github.com/chrischtel/nexlog/archive/refs/master.tar.gz",
+            .url = "git+https://github.com/chrischtel/nexlog/",
             .hash = "...",
         },
     },
@@ -74,12 +78,12 @@ pub fn main() !void {
 
 2. Add to your `build.zig`:
 ```zig
-const nexlog = b.dependency("nexlog", .{
-    .target = target,
-    .optimize = optimize,
-});
+    const nexlog = b.dependency("nexlog", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
-exe.addModule("nexlog", nexlog.module("nexlog"));
+    exe.root_module.addImport("nexlog", nexlog.module("nexlog"));
 ```
 
 ## Advanced Usage
@@ -120,7 +124,7 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 ## Building from Source
 
 ```bash
-git clone https://github.com/yourusername/nexlog.git
+git clone https://github.com/chrischtel/nexlog.git
 cd nexlog
 zig build
 ```
