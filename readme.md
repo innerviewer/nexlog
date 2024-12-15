@@ -2,6 +2,7 @@
 
 A modern, high-performance logging library for Zig featuring colorized output, file rotation, and comprehensive metadata tracking.
 
+> Development will mainly happen on the `develop` branch.
 [![Zig](https://img.shields.io/badge/Zig-0.13.0-orange.svg)](https://ziglang.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
