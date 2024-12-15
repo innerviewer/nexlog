@@ -26,14 +26,15 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     // Initialize with builder pattern
-    try nexlog.LogBuilder.init()
+    var builder = nexlog.LogBuilder.init(); // Create a mutable LogBuilder instance
+    try builder
         .setMinLevel(.debug)
         .enableColors(true)
         .enableFileLogging(true, "app.log")
         .build(allocator);
 
     const logger = nexlog.getDefaultLogger().?;
-    
+
     // Create metadata
     const metadata = nexlog.LogMetadata{
         .timestamp = std.time.timestamp(),
