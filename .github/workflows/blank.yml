@@ -2,9 +2,12 @@ name: Nexlog CI
 
 on:
   push:
-    branches: [ "master" ]
+    branches: 
+      - "master"  # Test on push to master
   pull_request:
-    branches: [ "master" ]
+    branches: 
+      - "master"  # Test on PR to master
+      - "develop" # Test on PRs to develop (e.g., feature/* -> develop)
   workflow_dispatch:
 
 jobs:
