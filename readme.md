@@ -1,4 +1,4 @@
-# Nexlog 🚀
+# Nexlog 
 
 A modern, high-performance logging library for Zig featuring colorized output, file rotation, and comprehensive metadata tracking.
 
