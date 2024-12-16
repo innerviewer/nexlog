@@ -11,6 +11,7 @@ pub const Pattern = struct {
     hash: u64,
 
     pub fn init(allocator: std.mem.Allocator, template: []const u8, pattern_type: types.PatternType) !*Pattern {
+        // Returns *Pattern or errors.Error
         const pattern = try allocator.create(Pattern);
         pattern.* = .{
             .template = try allocator.dupe(u8, template),
@@ -51,7 +52,6 @@ pub const Pattern = struct {
             if (isVariable(word)) {
                 var seen_values = std.ArrayList([]const u8).init(allocator);
                 try seen_values.append(try allocator.dupe(u8, word));
-
                 try self.variables.append(.{
                     .position = self.variables.items.len,
                     .var_type = determineVarType(word),
@@ -63,21 +63,17 @@ pub const Pattern = struct {
 
     fn isVariable(word: []const u8) bool {
         if (word.len == 0) return false;
-        // Check for numbers
         if (std.ascii.isDigit(word[0])) return true;
-        // Check for IP addresses
         var dots: u8 = 0;
         for (word) |char| {
             if (char == '.') dots += 1;
         }
         if (dots == 3) return true;
-        // Check for email
         if (std.mem.indexOf(u8, word, "@") != null) return true;
         return false;
     }
 
     fn determineVarType(word: []const u8) types.VarType {
-        // Check for IP addresses first (more specific than numbers)
         var dots: u8 = 0;
         var number_sections: u8 = 0;
         var sections = std.mem.split(u8, word, ".");
@@ -88,8 +84,6 @@ pub const Pattern = struct {
             }
         }
         if (dots == 4 and number_sections == 4) return .ip_address;
-
-        // Then other types
         if (std.ascii.isDigit(word[0])) return .number;
         if (std.mem.indexOf(u8, word, "@") != null) return .email;
         return .string;
@@ -104,7 +98,7 @@ pub const PatternAnalyzer = struct {
 
     pub const Config = struct {
         similarity_threshold: f32 = 0.85,
-        max_pattern_age: i64 = 60 * 60 * 24, // 24 hours
+        max_pattern_age: i64 = 60 * 60 * 24,
         max_patterns: usize = 1000,
     };
 
@@ -131,22 +125,18 @@ pub const PatternAnalyzer = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        // Calculate message hash
         const msg_hash = std.hash.Wyhash.hash(0, message);
 
-        // Check for exact match
         if (self.patterns.get(msg_hash)) |pattern| {
             pattern.updateMetadata();
             return pattern;
         }
 
-        // Look for similar patterns
         if (try self.findSimilarPattern(message)) |similar| {
             similar.updateMetadata();
             return similar;
         }
 
-        // Create new pattern
         const new_pattern = try Pattern.init(
             self.allocator,
             message,
@@ -154,7 +144,6 @@ pub const PatternAnalyzer = struct {
         );
         try self.patterns.put(msg_hash, new_pattern);
 
-        // Cleanup old patterns if needed
         try self.cleanup();
 
         return new_pattern;
@@ -177,7 +166,6 @@ pub const PatternAnalyzer = struct {
     }
 
     fn calculateSimilarity(self: *Self, a: []const u8, b: []const u8) !f32 {
-        // Simple Levenshtein distance-based similarity
         const distance = try self.levenshteinDistance(a, b);
         const max_length = @max(a.len, b.len);
         return 1.0 - @as(f32, @floatFromInt(distance)) / @as(f32, @floatFromInt(max_length));
@@ -240,15 +228,11 @@ pub const PatternAnalyzer = struct {
         return .message;
     }
 
-    const PatternInfo = struct { hash: u64, last_seen: i64 };
-
-    // Update cleanup to enforce max_patterns
     fn cleanup(self: *Self) !void {
         const now = std.time.timestamp();
         var to_remove = std.ArrayList(u64).init(self.allocator);
         defer to_remove.deinit();
 
-        // First, remove old patterns
         var it = self.patterns.iterator();
         while (it.next()) |entry| {
             if (now - entry.value_ptr.*.metadata.last_seen > self.config.max_pattern_age) {
@@ -256,7 +240,6 @@ pub const PatternAnalyzer = struct {
             }
         }
 
-        // Then, if we're still over the limit, remove oldest patterns
         if (self.patterns.count() > self.config.max_patterns) {
             var patterns = std.ArrayList(PatternInfo).init(self.allocator);
             defer patterns.deinit();
@@ -269,27 +252,26 @@ pub const PatternAnalyzer = struct {
                 });
             }
 
-            // Sort by last_seen
             std.mem.sort(PatternInfo, patterns.items, {}, struct {
                 pub fn lessThan(_: void, a: PatternInfo, b: PatternInfo) bool {
                     return a.last_seen < b.last_seen;
                 }
             }.lessThan);
 
-            // Add oldest patterns to removal list until we're under max_patterns
             const remove_count = self.patterns.count() - self.config.max_patterns;
             for (patterns.items[0..remove_count]) |pattern| {
                 try to_remove.append(pattern.hash);
             }
         }
 
-        // Remove all marked patterns
         for (to_remove.items) |hash| {
             if (self.patterns.fetchRemove(hash)) |kv| {
                 kv.value.deinit(self.allocator);
             }
         }
     }
+
+    const PatternInfo = struct { hash: u64, last_seen: i64 };
 
     pub fn getPatternCount(self: *Self) usize {
         self.mutex.lock();
@@ -304,16 +286,13 @@ test "pattern analyzer basic usage" {
     var analyzer = PatternAnalyzer.init(testing.allocator, .{});
     defer analyzer.deinit();
 
-    // Test message analysis
     const msg1 = "User logged in: admin";
     const pattern1 = try analyzer.analyzeMessage(msg1);
     try testing.expect(pattern1 != null);
 
-    // Test similar message
     const msg2 = "User logged in: user123";
     const pattern2 = try analyzer.analyzeMessage(msg2);
     try testing.expect(pattern2 != null);
 
-    // Test pattern count
     try testing.expectEqual(@as(usize, 1), analyzer.getPatternCount());
 }
