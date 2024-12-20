@@ -43,6 +43,8 @@ pub const PatternAnalyzer = analysis.patterns.PatternAnalyzer;
 pub const Pattern = analysis.patterns.Pattern;
 // pub const PatternPredictor = analysis.predictor.PatternPredictor;
 // pub const PatternCorrelator = analysis.correlator.PatternCorrelator;
+pub const CategoryRule = analysis.patterns.CategoryRule;
+pub const VariableRule = analysis.patterns.VariableRule;
 
 // Example test
 test "basic log test" {
