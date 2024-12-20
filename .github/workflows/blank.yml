@@ -3,11 +3,11 @@ name: Nexlog CI
 on:
   push:
     branches: 
-      - "master"  # Test on push to master
+      - "master"
   pull_request:
     branches: 
-      - "master"  # Test on PR to master
-      - "develop" # Test on PRs to develop (e.g., feature/* -> develop)
+      - "master"
+      - "develop"
   workflow_dispatch:
 
 jobs:
@@ -21,6 +21,16 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+
+    - name: Cache zig dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/zig
+          zig-cache
+        key: ${{ runner.os }}-zig-${{ matrix.zig-version }}-${{ hashFiles('**/build.zig.zon') }}
+        restore-keys: |
+          ${{ runner.os }}-zig-${{ matrix.zig-version }}-
 
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
@@ -39,13 +49,3 @@ jobs:
     - name: Run examples
       if: success()
       run: zig build examples
-
-    - name: Cache zig dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache/zig
-          zig-cache
-        key: ${{ runner.os }}-zig-${{ matrix.zig-version }}-${{ hashFiles('**/build.zig.zon') }}
-        restore-keys: |
-          ${{ runner.os }}-zig-${{ matrix.zig-version }}-
