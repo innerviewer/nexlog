@@ -49,3 +49,5 @@ jobs:
         key: ${{ runner.os }}-zig-${{ matrix.zig-version }}-${{ hashFiles('**/build.zig.zon') }}
         restore-keys: |
           ${{ runner.os }}-zig-${{ matrix.zig-version }}-
+    continue-on-error: ${{ matrix.zig-version == 'master' }}
+
