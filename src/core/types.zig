@@ -31,6 +31,11 @@ pub const LogLevel = enum {
     }
 };
 
+pub const Variable = struct {
+    var_type: VarType,
+    value: []const u8,
+};
+
 pub const LogMetadata = struct {
     timestamp: i64,
     thread_id: usize,

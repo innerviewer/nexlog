@@ -79,6 +79,12 @@ pub const Pattern = struct {
             }
 
             if (var_type) |vtype| {
+                for (self.variables.items) |*vari| {
+                    if (vari.var_type == vtype and std.mem.eql(u8, vari.seen_values.items[0], word)) {
+                        return; // Variable already exists, skip.
+                    }
+                }
+
                 var seen_values = std.ArrayList([]const u8).init(allocator);
                 try seen_values.append(try allocator.dupe(u8, word));
                 try self.variables.append(.{

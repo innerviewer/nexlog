@@ -190,6 +190,12 @@ test "auto categorization and variable rule test" {
     try testing.expectEqualStrings("security", p.category);
 
     // Check that the IP was detected as a variable
+    if (p.variables.items.len != 1) {
+        std.debug.print("Variables Detected (Expected 1, Found {}):\n", .{p.variables.items.len});
+        for (p.variables.items) |vara| {
+            std.debug.print("  - Type: {any}, Value: {s}\n", .{ vara.var_type, vara.seen_values.items[0] });
+        }
+    }
     try testing.expectEqual(@as(usize, 1), p.variables.items.len);
     const vari = p.variables.items[0];
     try testing.expectEqual(types.VarType.ip_address, vari.var_type);
