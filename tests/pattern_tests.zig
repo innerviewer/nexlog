@@ -2,7 +2,7 @@
 const std = @import("std");
 const testing = std.testing;
 const nexlog = @import("nexlog");
-
+const types = nexlog.core.types;
 test "pattern: basic type detection" {
     var analyzer = nexlog.PatternAnalyzer.init(testing.allocator, .{});
     defer analyzer.deinit();
@@ -139,4 +139,86 @@ test "pattern: custom pattern types" {
     const pattern = try analyzer.analyzeMessage(custom_msg);
     try testing.expect(pattern != null);
     try testing.expectEqual(nexlog.PatternType.custom, pattern.?.pattern_type);
+}
+
+// tests/pattern_tests.zig
+test "auto categorization and variable rule test" {
+    const allocator = testing.allocator;
+
+    // Define some category rules for testing:
+    // "security" requires at least two keywords from {"auth","breach","malware"}
+    // "performance" requires at least one keyword from {"latency","slow","timeout"}
+    const category_rules = &[_]nexlog.analysis.patterns.CategoryRule{
+        .{
+            .category = "security",
+            .keywords = &[_][]const u8{ "auth", "breach", "malware" },
+            .threshold = 2,
+        },
+        .{
+            .category = "performance",
+            .keywords = &[_][]const u8{ "latency", "slow", "timeout" },
+            .threshold = 1,
+        },
+    };
+
+    // Define variable rules:
+    // If a token matches an IP regex, classify it as an ip_address variable.
+    // If a token is purely numeric, classify it as a number variable.
+    const var_rules = &[_]nexlog.analysis.patterns.VariableRule{
+        .{ .name = "ip", .regex = "^\\d+\\.\\d+\\.\\d+\\.\\d+$", .var_type = .ip_address },
+        .{ .name = "number", .regex = "^\\d+$", .var_type = .number },
+    };
+
+    var analyzer = nexlog.analysis.patterns.PatternAnalyzer.init(allocator, .{
+        .similarity_threshold = 0.85,
+        .max_pattern_age = 60 * 60 * 24,
+        .max_patterns = 1000,
+        .variable_rules = var_rules,
+        .category_rules = category_rules,
+    });
+    defer analyzer.deinit();
+
+    // Test a message that should fall into the "security" category:
+    // Contains "auth" and "breach" (2 keywords required).
+    // Also includes an IP that should be detected as a variable.
+    const security_msg = "User auth breach detected from 192.168.1.100";
+    const pattern = try analyzer.analyzeMessage(security_msg);
+    try testing.expect(pattern != null);
+
+    // Unwrap the optional pattern
+    const p = pattern.?;
+    try testing.expectEqualStrings("security", p.category);
+
+    // Check that the IP was detected as a variable
+    if (p.variables.items.len != 1) {
+        std.debug.print("Variables Detected (Expected 1, Found {}):\n", .{p.variables.items.len});
+        for (p.variables.items) |vara| {
+            std.debug.print("  - Type: {any}, Value: {s}\n", .{ vara.var_type, vara.seen_values.items[0] });
+        }
+    }
+    try testing.expectEqual(@as(usize, 1), p.variables.items.len);
+    const vari = p.variables.items[0];
+    try testing.expectEqual(types.VarType.ip_address, vari.var_type);
+    try testing.expectEqualStrings("192.168.1.100", vari.seen_values.items[0]);
+
+    // Test a message that should fall into the "performance" category:
+    // Contains "latency" which is one of the keywords required.
+    const perf_msg = "System latency is high";
+    const pattern2 = try analyzer.analyzeMessage(perf_msg);
+    try testing.expect(pattern2 != null);
+    const p2 = pattern2.?; // Unwrap the optional
+    try testing.expectEqualStrings("performance", p2.category);
+
+    // Test a message that contains a numeric variable but doesn't meet any category threshold:
+    const num_msg = "Request took 350ms";
+    const pattern3 = try analyzer.analyzeMessage(num_msg);
+    try testing.expect(pattern3 != null);
+    const p3 = pattern3.?; // Unwrap the optional
+    // No category keywords, so it should be "uncategorized"
+    try testing.expectEqualStrings("uncategorized", p3.category);
+    // Check the numeric variable detection
+    try testing.expectEqual(@as(usize, 1), p3.variables.items.len);
+    const var3 = p3.variables.items[0];
+    try testing.expectEqual(types.VarType.number, var3.var_type);
+    try testing.expectEqualStrings("350ms", var3.seen_values.items[0]);
 }

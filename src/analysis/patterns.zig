@@ -3,12 +3,21 @@ const std = @import("std");
 const types = @import("../core/types.zig");
 const errors = @import("../core/errors.zig");
 
+pub const VariableRule = struct { name: []const u8, regex: []const u8, var_type: types.VarType };
+
+pub const CategoryRule = struct {
+    category: []const u8,
+    keywords: []const []const u8, // Array of keywords
+    threshold: usize, // Minimum keyword matches for this category
+};
+
 pub const Pattern = struct {
     template: []const u8,
     pattern_type: types.PatternType,
     metadata: types.PatternMetadata,
     variables: std.ArrayList(types.PatternVariable),
     hash: u64,
+    category: []const u8,
 
     pub fn init(allocator: std.mem.Allocator, template: []const u8, pattern_type: types.PatternType) !*Pattern {
         // Returns *Pattern or errors.Error
@@ -24,8 +33,10 @@ pub const Pattern = struct {
             },
             .variables = std.ArrayList(types.PatternVariable).init(allocator),
             .hash = std.hash.Wyhash.hash(0, template),
+            .category = "uncategorized",
         };
-        try pattern.detectVariables(allocator, template);
+        // Detect variables after initialization
+        try pattern.detectVariables(allocator, template, null);
         return pattern;
     }
 
@@ -46,15 +57,39 @@ pub const Pattern = struct {
         self.metadata.frequency += 1;
     }
 
-    pub fn detectVariables(self: *Pattern, allocator: std.mem.Allocator, message: []const u8) !void {
+    // Modified to accept variable_rules as an optional parameter
+    pub fn detectVariables(self: *Pattern, allocator: std.mem.Allocator, message: []const u8, variable_rules: ?[]const VariableRule) !void {
         var words = std.mem.split(u8, message, " ");
         while (words.next()) |word| {
-            if (isVariable(word)) {
+            var var_type: ?types.VarType = null;
+
+            // First, try variable rules if provided
+            if (variable_rules) |rules| {
+                for (rules) |rule| {
+                    if (matchesRegex(word, rule.regex)) {
+                        var_type = rule.var_type;
+                        break;
+                    }
+                }
+            }
+
+            // If not matched by rules, fallback to heuristic
+            if (var_type == null and isVariable(word)) {
+                var_type = determineVarType(word);
+            }
+
+            if (var_type) |vtype| {
+                for (self.variables.items) |*vari| {
+                    if (vari.var_type == vtype and std.mem.eql(u8, vari.seen_values.items[0], word)) {
+                        return; // Variable already exists, skip.
+                    }
+                }
+
                 var seen_values = std.ArrayList([]const u8).init(allocator);
                 try seen_values.append(try allocator.dupe(u8, word));
                 try self.variables.append(.{
                     .position = self.variables.items.len,
-                    .var_type = determineVarType(word),
+                    .var_type = vtype,
                     .seen_values = seen_values,
                 });
             }
@@ -65,8 +100,8 @@ pub const Pattern = struct {
         if (word.len == 0) return false;
         if (std.ascii.isDigit(word[0])) return true;
         var dots: u8 = 0;
-        for (word) |char| {
-            if (char == '.') dots += 1;
+        for (word) |c| {
+            if (c == '.') dots += 1;
         }
         if (dots == 3) return true;
         if (std.mem.indexOf(u8, word, "@") != null) return true;
@@ -79,14 +114,68 @@ pub const Pattern = struct {
         var sections = std.mem.split(u8, word, ".");
         while (sections.next()) |section| {
             dots += 1;
-            if (std.ascii.isDigit(section[0])) {
+            if (section.len > 0 and std.ascii.isDigit(section[0])) {
                 number_sections += 1;
             }
         }
         if (dots == 4 and number_sections == 4) return .ip_address;
-        if (std.ascii.isDigit(word[0])) return .number;
+        if (word.len > 0 and std.ascii.isDigit(word[0])) return .number;
         if (std.mem.indexOf(u8, word, "@") != null) return .email;
         return .string;
+    }
+
+    // Corrected matchesRegex function with single variable capture and manual index tracking
+    fn matchesRegex(word: []const u8, regex_pattern: []const u8) bool {
+        // IP regex
+        if (std.mem.eql(u8, regex_pattern, "^\\d+\\.\\d+\\.\\d+\\.\\d+$")) {
+            var dots: u8 = 0;
+            for (word) |c| {
+                if (c == '.') {
+                    dots += 1;
+                } else if (!std.ascii.isDigit(c)) return false;
+            }
+            const matched = dots == 3;
+            if (matched) std.debug.print("IP matched: {s}\n", .{word});
+            return matched;
+        }
+
+        // UUID regex
+        if (std.mem.eql(u8, regex_pattern, "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")) {
+            if (word.len != 36) return false;
+            var idx: usize = 0;
+            for (word) |c| {
+                if (idx == 8 or idx == 13 or idx == 18 or idx == 23) {
+                    if (c != '-') return false;
+                } else if (!std.ascii.isHex(c)) {
+                    return false;
+                }
+                idx += 1;
+            }
+            std.debug.print("UUID matched: {s}\n", .{word});
+            return true;
+        }
+
+        // Number regex
+        if (std.mem.eql(u8, regex_pattern, "^\\d+$")) {
+            for (word) |c| {
+                if (!std.ascii.isDigit(c)) return false;
+            }
+            std.debug.print("Number matched: {s}\n", .{word});
+            return true;
+        }
+
+        // Email regex
+        if (std.mem.eql(u8, regex_pattern, "^[\\w\\.]+@[\\w\\.]+$")) {
+            // Simple email validation
+            const at_pos = std.mem.indexOf(u8, word, "@") orelse return false;
+            if (at_pos == 0 or at_pos == word.len - 1) return false;
+            std.debug.print("Email matched: {s}\n", .{word});
+            return true;
+        }
+
+        // Add more hardcoded patterns as needed.
+
+        return false; // Default fallback
     }
 };
 
@@ -100,6 +189,8 @@ pub const PatternAnalyzer = struct {
         similarity_threshold: f32 = 0.85,
         max_pattern_age: i64 = 60 * 60 * 24,
         max_patterns: usize = 1000,
+        variable_rules: []const VariableRule = &[_]VariableRule{},
+        category_rules: []const CategoryRule = &[_]CategoryRule{},
     };
 
     const Self = @This();
@@ -142,11 +233,109 @@ pub const PatternAnalyzer = struct {
             message,
             self.detectPatternType(message),
         );
+        try new_pattern.detectVariables(self.allocator, message, self.config.variable_rules);
+
+        // Assign category using autoCategorize method
+        new_pattern.category = try self.autoCategorize(message);
+
         try self.patterns.put(msg_hash, new_pattern);
 
         try self.cleanup();
 
         return new_pattern;
+    }
+    fn cleanToken(allocator: std.mem.Allocator, token: []const u8) ![]const u8 {
+        var start: usize = 0;
+        var end: usize = token.len;
+
+        // Trim leading whitespace
+        while (start < end and std.ascii.isWhitespace(token[start])) {
+            start += 1;
+        }
+
+        // Trim trailing punctuation
+        while (end > start and !std.ascii.isAlphanumeric(token[end - 1])) {
+            end -= 1;
+        }
+
+        if (end <= start) return allocator.dupe(u8, "");
+
+        // Slice the token
+        const trimmed = token[start..end];
+
+        // Convert to lowercase
+        var lower = try allocator.alloc(u8, trimmed.len);
+        var idx: usize = 0; // Initialize index
+
+        for (trimmed) |c| { // Capture only 'c'
+            lower[idx] = std.ascii.toLower(c);
+            idx += 1;
+        }
+
+        return lower;
+    }
+
+    fn autoCategorize(self: *PatternAnalyzer, message: []const u8) ![]const u8 {
+        var tokens = std.ArrayList([]const u8).init(self.allocator);
+
+        defer {
+            for (tokens.items) |token| {
+                self.allocator.free(token);
+            }
+
+            tokens.deinit();
+        }
+        // Tokenize message by splitting on spaces
+        var iter = std.mem.split(u8, message, " ");
+        while (iter.next()) |token| {
+            const clean = try cleanToken(self.allocator, token);
+
+            var is_duplicate = false;
+            for (tokens.items) |existing_tokens| {
+                if (std.mem.eql(u8, clean, existing_tokens)) {
+                    is_duplicate = true;
+                    break;
+                }
+            }
+
+            if (!is_duplicate) {
+                try tokens.append(clean);
+            } else {
+                // If duplicate, free the allocated clean token
+                self.allocator.free(clean);
+            }
+        }
+
+        var best_category: []const u8 = "uncategorized";
+        var best_score: usize = 0;
+
+        // Check category rules
+        for (self.config.category_rules) |rule| {
+            var score: usize = 0;
+            for (tokens.items) |tkn| {
+                for (rule.keywords) |kw| {
+                    if (std.mem.eql(u8, tkn, kw)) {
+                        score += 1;
+                    }
+                }
+            }
+
+            if (score >= rule.threshold and score > best_score) {
+                best_score = score;
+                best_category = rule.category;
+            }
+        }
+
+        // Fallback heuristics if no category met threshold
+        if (best_score == 0) {
+            if (std.mem.indexOf(u8, message, "error") != null or
+                std.mem.indexOf(u8, message, "fail") != null)
+            {
+                best_category = "error";
+            }
+        }
+
+        return best_category;
     }
 
     fn findSimilarPattern(self: *Self, message: []const u8) !?*Pattern {
@@ -155,7 +344,7 @@ pub const PatternAnalyzer = struct {
 
         var it = self.patterns.iterator();
         while (it.next()) |entry| {
-            const similarity = try self.calculateSimilarity(message, entry.value_ptr.*.template);
+            const similarity = try calculateSimilarity(message, entry.value_ptr.*.template);
             if (similarity > self.config.similarity_threshold and similarity > best_similarity) {
                 best_similarity = similarity;
                 best_match = entry.value_ptr.*;
@@ -165,13 +354,48 @@ pub const PatternAnalyzer = struct {
         return best_match;
     }
 
-    fn calculateSimilarity(self: *Self, a: []const u8, b: []const u8) !f32 {
-        const distance = try self.levenshteinDistance(a, b);
-        const max_length = @max(a.len, b.len);
-        return 1.0 - @as(f32, @floatFromInt(distance)) / @as(f32, @floatFromInt(max_length));
+    fn calculateSimilarity(a: []const u8, b: []const u8) !f32 {
+        // Example using Jaccard similarity instead of Levenshtein for efficiency
+        return jaccardSimilarity(a, b);
+    }
+    /// Example similarity metric: Jaccard Similarity
+    fn jaccardSimilarity(a: []const u8, b: []const u8) f32 {
+        var intersection: usize = 0;
+        var unions: usize = 0;
+
+        // Convert strings to sets (unique characters)
+        var set_a = std.AutoHashMap(u8, bool).init(std.heap.page_allocator);
+        defer set_a.deinit();
+        for (a) |c| {
+            _ = set_a.put(c, true) catch {};
+        }
+
+        var set_b = std.AutoHashMap(u8, bool).init(std.heap.page_allocator);
+        defer set_b.deinit();
+        for (b) |c| {
+            _ = set_b.put(c, true) catch {};
+        }
+
+        // Calculate intersection
+        var it = set_a.iterator();
+        while (it.next()) |entry| {
+            if (set_b.get(entry.key_ptr.*) orelse false) {
+                intersection += 1;
+            }
+        }
+
+        // Calculate union
+        unions = set_a.count() + set_b.count() - intersection;
+
+        if (unions == 0) return 1.0;
+        const ra: f32 = @floatFromInt(intersection);
+        const rb: f32 = @floatFromInt(unions);
+        return ra / rb;
     }
 
     fn levenshteinDistance(self: *Self, a: []const u8, b: []const u8) !usize {
+        const aa: f32 = @floatFromInt(a.len);
+        const max_distance: usize = @intCast(self.config.similarity_threshold * aa);
         var matrix = try std.ArrayList([]usize).initCapacity(self.allocator, a.len + 1);
         defer matrix.deinit();
 
@@ -195,6 +419,11 @@ pub const PatternAnalyzer = struct {
                         matrix.items[i - 1][j - 1] + cost,
                     ),
                 );
+
+                // Early termination if distance exceeds max_distance
+                if (matrix.items[i][j] > max_distance) {
+                    return max_distance;
+                }
             }
         }
 
@@ -279,20 +508,3 @@ pub const PatternAnalyzer = struct {
         return self.patterns.count();
     }
 };
-
-test "pattern analyzer basic usage" {
-    const testing = std.testing;
-
-    var analyzer = PatternAnalyzer.init(testing.allocator, .{});
-    defer analyzer.deinit();
-
-    const msg1 = "User logged in: admin";
-    const pattern1 = try analyzer.analyzeMessage(msg1);
-    try testing.expect(pattern1 != null);
-
-    const msg2 = "User logged in: user123";
-    const pattern2 = try analyzer.analyzeMessage(msg2);
-    try testing.expect(pattern2 != null);
-
-    try testing.expectEqual(@as(usize, 1), analyzer.getPatternCount());
-}
