@@ -15,6 +15,11 @@ pub const analysis = struct {
     // pub const correlator = @import("analysis/correlator.zig");
 };
 
+pub const utils = struct {
+    pub const buffer = @import("utils/buffer.zig");
+    pub const pool = @import("utils/pool.zig");
+};
+
 // Re-export main types and functions
 pub const Logger = core.logger.Logger;
 pub const LogLevel = core.types.LogLevel;
@@ -45,6 +50,10 @@ pub const Pattern = analysis.patterns.Pattern;
 // pub const PatternCorrelator = analysis.correlator.PatternCorrelator;
 pub const CategoryRule = analysis.patterns.CategoryRule;
 pub const VariableRule = analysis.patterns.VariableRule;
+
+// Re-export utility functionality
+pub const Buffer = utils.buffer.Buffer;
+pub const Pool = utils.pool.Pool;
 
 // Example test
 test "basic log test" {

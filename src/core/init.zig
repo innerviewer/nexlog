@@ -50,6 +50,13 @@ pub fn init(allocator: std.mem.Allocator) !void {
         .enable_colors = true,
         .enable_file_logging = false,
         .file_path = null,
+        // Add new defaults
+        .async_mode = false,
+        .enable_metadata = true,
+        .buffer_size = 4096,
+        .max_file_size = 10 * 1024 * 1024, // 10MB
+        .enable_rotation = true,
+        .max_rotated_files = 5,
     };
     return initWithConfig(allocator, default_config);
 }
@@ -85,8 +92,31 @@ pub const LogBuilder = struct {
                 .enable_colors = true,
                 .enable_file_logging = false,
                 .file_path = null,
+                // Add new defaults
+                .async_mode = false,
+                .enable_metadata = true,
+                .buffer_size = 4096,
+                .max_file_size = 10 * 1024 * 1024,
+                .enable_rotation = true,
+                .max_rotated_files = 5,
             },
         };
+    }
+
+    // Add new builder methods
+    pub fn enableAsyncMode(self: *LogBuilder, enable: bool) *LogBuilder {
+        self.config.async_mode = enable;
+        return self;
+    }
+
+    pub fn setBufferSize(self: *LogBuilder, size: usize) *LogBuilder {
+        self.config.buffer_size = size;
+        return self;
+    }
+
+    pub fn enableMetadata(self: *LogBuilder, enable: bool) *LogBuilder {
+        self.config.enable_metadata = enable;
+        return self;
     }
 
     pub fn setMinLevel(self: *LogBuilder, level: types.LogLevel) *LogBuilder { // Updated to use types.LogLevel
