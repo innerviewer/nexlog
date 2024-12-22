@@ -141,5 +141,27 @@ pub const NetworkHandler = struct {
         } else if (now < self.reconnect_time) {
             return null;
         }
+
+        // Try to connect
+        var stream = std.net.tcpConnectToHost(
+            self.allocator,
+            self.config.endpoint.host,
+            self.config.endpoint.port,
+        ) catch |err| {
+            // Set reconnect time on failure
+            self.reconnect_time = now + @divTrunc(@as(i64, @intCast(self.config.retry_delay_ms)), 1000);
+            return err;
+        };
+
+        // Set up SSL if needed
+        if (self.config.endpoint.secure) {
+            // Note: SSL implementation would go here
+            // For now, we'll just error out
+            stream.close();
+            return error.SslNotImplemented;
+        }
+
+        self.connection = stream;
+        return stream;
     }
 };
