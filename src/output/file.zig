@@ -57,6 +57,7 @@ pub const FileHandler = struct {
         if (self.file) |file| {
             file.close();
         }
+        // circular_buffer is not optional, so directly deinit it
         self.circular_buffer.deinit();
         self.allocator.destroy(self);
     }
@@ -89,13 +90,24 @@ pub const FileHandler = struct {
     pub fn flush(self: *Self) !void {
         if (self.file) |file| {
             var temp_buffer: [4096]u8 = undefined;
-            while (true) {
-                const bytes_read = try self.circular_buffer.read(&temp_buffer);
-                if (bytes_read == 0) break;
 
-                try file.writeAll(temp_buffer[0..bytes_read]);
+            // Only try to read if there's data in the buffer
+            if (self.circular_buffer.len() > 0) {
+                while (true) {
+                    const bytes_read = self.circular_buffer.read(&temp_buffer) catch |err| {
+                        if (err == errors.BufferError.BufferUnderflow) {
+                            // No more data to read
+                            break;
+                        }
+                        return err;
+                    };
+
+                    if (bytes_read == 0) break;
+                    try file.writeAll(temp_buffer[0..bytes_read]);
+                }
+                try file.sync();
             }
-            try file.sync();
+
             self.last_flush = std.time.timestamp();
 
             // Check rotation after flush

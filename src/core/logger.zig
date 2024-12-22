@@ -63,12 +63,11 @@ pub const Logger = struct {
     pub fn deinit(self: *Self) void {
         if (self.console_handler) |h| {
             h.deinit();
+            self.console_handler = null;
         }
         if (self.file_handler) |h| {
             h.deinit();
-        }
-        if (self.network_handler) |h| {
-            h.deinit();
+            self.file_handler = null;
         }
         self.allocator.destroy(self);
     }
