@@ -9,6 +9,17 @@ pub const core = struct {
     pub const types = @import("core/types.zig");
 };
 
+pub const analysis = struct {
+    pub const patterns = @import("analysis/patterns.zig");
+    // pub const predictor = @import("analysis/predictor.zig");
+    // pub const correlator = @import("analysis/correlator.zig");
+};
+
+pub const utils = struct {
+    pub const buffer = @import("utils/buffer.zig");
+    pub const pool = @import("utils/pool.zig");
+};
+
 // Re-export main types and functions
 pub const Logger = core.logger.Logger;
 pub const LogLevel = core.types.LogLevel;
@@ -23,6 +34,26 @@ pub const deinit = core.init.deinit;
 pub const isInitialized = core.init.isInitialized;
 pub const getDefaultLogger = core.init.getDefaultLogger;
 pub const LogBuilder = core.init.LogBuilder;
+
+// Re-export pattern analysis types and functions
+pub const PatternType = core.types.PatternType;
+pub const PatternVariable = core.types.PatternVariable;
+pub const VarType = core.types.VarType;
+pub const PatternMetadata = core.types.PatternMetadata;
+pub const PatternMatch = core.types.PatternMatch;
+pub const PatternConfig = core.types.PatternConfig;
+
+// Re-export analysis functionality
+pub const PatternAnalyzer = analysis.patterns.PatternAnalyzer;
+pub const Pattern = analysis.patterns.Pattern;
+// pub const PatternPredictor = analysis.predictor.PatternPredictor;
+// pub const PatternCorrelator = analysis.correlator.PatternCorrelator;
+pub const CategoryRule = analysis.patterns.CategoryRule;
+pub const VariableRule = analysis.patterns.VariableRule;
+
+// Re-export utility functionality
+pub const Buffer = utils.buffer.Buffer;
+pub const Pool = utils.pool.Pool;
 
 // Example test
 test "basic log test" {

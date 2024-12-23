@@ -1,6 +1,11 @@
 const std = @import("std");
 const types = @import("types.zig");
 const config = @import("config.zig");
+const errors = @import("errors.zig");
+
+const console = @import("../output/console.zig");
+const file = @import("../output/file.zig");
+const network = @import("../output/network.zig");
 
 pub const Logger = struct {
     const Self = @This();
@@ -8,36 +13,62 @@ pub const Logger = struct {
     allocator: std.mem.Allocator,
     config: config.LogConfig,
     mutex: std.Thread.Mutex,
-    file: ?std.fs.File,
-    buffer: []u8,
-    buffer_pos: usize,
+
+    // Output handlers
+    console_handler: ?*console.ConsoleHandler,
+    file_handler: ?*file.FileHandler,
+    network_handler: ?*network.NetworkHandler,
 
     pub fn init(allocator: std.mem.Allocator, cfg: config.LogConfig) !*Self {
         var logger = try allocator.create(Self);
 
+        // Initialize base logger
         logger.* = .{
             .allocator = allocator,
             .config = cfg,
             .mutex = std.Thread.Mutex{},
-            .file = null,
-            .buffer = try allocator.alloc(u8, cfg.buffer_size),
-            .buffer_pos = 0,
+            .console_handler = null,
+            .file_handler = null,
+            .network_handler = null,
         };
 
+        // Initialize console handler by default
+        const console_config = console.ConsoleConfig{
+            .use_stderr = true,
+            .enable_colors = cfg.enable_colors,
+            .buffer_size = cfg.buffer_size,
+        };
+        logger.console_handler = try console.ConsoleHandler.init(allocator, console_config);
+
+        // Initialize file handler if enabled
         if (cfg.enable_file_logging) {
             if (cfg.file_path) |path| {
-                logger.file = try std.fs.cwd().createFile(path, .{});
+                const file_config = file.FileConfig{
+                    .path = path,
+                    .mode = .append,
+                    .max_size = cfg.max_file_size,
+                    .enable_rotation = cfg.enable_rotation,
+                    .max_rotated_files = cfg.max_rotated_files,
+                    .buffer_size = cfg.buffer_size,
+                };
+                logger.file_handler = try file.FileHandler.init(allocator, file_config);
             }
         }
+
+        // Network handler is initialized on demand through addNetworkHandler()
 
         return logger;
     }
 
     pub fn deinit(self: *Self) void {
-        if (self.file) |file| {
-            file.close();
+        if (self.console_handler) |h| {
+            h.deinit();
+            self.console_handler = null;
         }
-        self.allocator.free(self.buffer);
+        if (self.file_handler) |h| {
+            h.deinit();
+            self.file_handler = null;
+        }
         self.allocator.destroy(self);
     }
 
@@ -52,89 +83,65 @@ pub const Logger = struct {
             return;
         }
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        // Format message once for all handlers
+        var temp_buffer: [4096]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&temp_buffer);
+        const message = try std.fmt.allocPrint(
+            fba.allocator(),
+            fmt,
+            args,
+        );
 
-        var fba = std.heap.FixedBufferAllocator.init(self.buffer);
-        const allocator = fba.allocator();
+        // Send to all active handlers
+        if (self.console_handler) |h| {
+            h.write(level, message, metadata) catch |err| {
+                std.debug.print("Console handler error: {}\n", .{err});
+            };
+        }
 
-        // Format timestamp
-        const timestamp = if (metadata) |m| m.timestamp else std.time.timestamp();
-        const time_str = try std.fmt.allocPrint(allocator, "[{d}] ", .{timestamp});
+        if (self.file_handler) |h| {
+            h.write(level, message, metadata) catch |err| {
+                std.debug.print("File handler error: {}\n", .{err});
+            };
+        }
 
-        // Format log level
-        const level_str = if (self.config.enable_colors)
-            try std.fmt.allocPrint(allocator, "{s}[{s}]\x1b[0m ", .{ level.toColor(), level.toString() })
-        else
-            try std.fmt.allocPrint(allocator, "[{s}] ", .{level.toString()});
-
-        // Format message
-        const message = try std.fmt.allocPrint(allocator, fmt ++ "\n", args);
-
-        // Write to console
-        const stderr = std.io.getStdErr().writer();
-        try stderr.writeAll(time_str);
-        try stderr.writeAll(level_str);
-        try stderr.writeAll(message);
-
-        // Write to file if enabled
-        if (self.file) |file| {
-            try file.writeAll(time_str);
-            // Strip colors for file output
-            const plain_level = try std.fmt.allocPrint(allocator, "[{s}] ", .{level.toString()});
-            try file.writeAll(plain_level);
-            try file.writeAll(message);
-
-            // Check rotation
-            if (self.config.enable_rotation) {
-                const file_size = try file.getEndPos();
-                if (file_size >= self.config.max_file_size) {
-                    try self.rotateLog();
-                }
-            }
+        if (self.network_handler) |h| {
+            h.write(level, message, metadata) catch |err| {
+                std.debug.print("Network handler error: {}\n", .{err});
+            };
         }
     }
 
-    fn rotateLog(self: *Self) !void {
-        if (self.config.file_path) |path| {
-            // Close current file
-            if (self.file) |file| {
-                file.close();
-            }
+    // Helper methods for adding/removing handlers
+    pub fn addNetworkHandler(self: *Self, endpoint: network.NetworkEndpoint) !void {
+        if (self.network_handler != null) {
+            return error.HandlerAlreadyExists;
+        }
 
-            // Rotate existing files
-            var i: usize = self.config.max_rotated_files;
-            while (i > 0) : (i -= 1) {
-                const old_path = try std.fmt.allocPrint(
-                    self.allocator,
-                    "{s}.{d}",
-                    .{ path, i - 1 },
-                );
-                defer self.allocator.free(old_path);
-                const new_path = try std.fmt.allocPrint(
-                    self.allocator,
-                    "{s}.{d}",
-                    .{ path, i },
-                );
-                defer self.allocator.free(new_path);
+        const network_config = network.NetworkConfig{
+            .endpoint = endpoint,
+            .buffer_size = self.config.buffer_size,
+        };
+        self.network_handler = try network.NetworkHandler.init(self.allocator, network_config);
+    }
 
-                std.fs.cwd().rename(old_path, new_path) catch |err| switch (err) {
-                    error.FileNotFound => continue,
-                    else => return err,
-                };
-            }
+    pub fn removeNetworkHandler(self: *Self) void {
+        if (self.network_handler) |h| {
+            h.deinit();
+            self.network_handler = null;
+        }
+    }
 
-            // Rename current log file
-            const backup_path = try std.fmt.allocPrint(
-                self.allocator,
-                "{s}.1",
-                .{path},
-            );
-            defer self.allocator.free(backup_path);
-            try std.fs.cwd().rename(path, backup_path);
-
-            // Create new log file
-            self.file = try std.fs.cwd().createFile(path, .{});
+    // Flush all handlers
+    pub fn flush(self: *Self) !void {
+        if (self.console_handler) |h| {
+            try h.flush();
+        }
+        if (self.file_handler) |h| {
+            try h.flush();
+        }
+        if (self.network_handler) |h| {
+            try h.flush();
         }
     }
 };
